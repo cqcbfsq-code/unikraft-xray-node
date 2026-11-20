@@ -1,0 +1,82 @@
+name: Node Speedtest
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * 0'   # weekly
+
+jobs:
+  speedtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Download clients
+        run: |
+          curl -fsSL -o xray.zip https://github.com/XTLS/Xray-core/releases/download/v26.11.9/Xray-linux-64.zip
+          unzip -oq xray.zip -d xray && chmod +x xray/xray
+          curl -fsSL -o hysteria https://github.com/apernet/hysteria/releases/download/app/v2.6.3/hysteria-linux-amd64
+          chmod +x hysteria
+      - name: Write configs
+        run: |
+          echo 'eyJsb2ciOnsibG9nbGV2ZWwiOiJ3YXJuaW5nIn0sImluYm91bmRzIjpbeyJwb3J0IjoxMDgwMCwibGlzdGVuIjoiMTI3LjAuMC4xIiwicHJvdG9jb2wiOiJzb2NrcyIsInNldHRpbmdzIjp7ImF1dGgiOiJub2F1dGgifX1dLCJvdXRib3VuZHMiOlt7InByb3RvY29sIjoidmxlc3MiLCJzZXR0aW5ncyI6eyJ2bmV4dCI6W3siYWRkcmVzcyI6ImxpbmdlcmluZy1mb3Jlc3Qtc3psbzN4d2guc2luLnVuaWtyYWZ0LmFwcCIsInBvcnQiOjQ0MywidXNlcnMiOlt7ImlkIjoiZjJkNzYwNjUtMzFiZC00YjMwLTlkMDctYzYzNzRlY2EyYmI3IiwiZW5jcnlwdGlvbiI6Im5vbmUifV19XX0sInN0cmVhbVNldHRpbmdzIjp7Im5ldHdvcmsiOiJ3cyIsInNlY3VyaXR5IjoidGxzIiwidGxzU2V0dGluZ3MiOnsic2VydmVyTmFtZSI6ImxpbmdlcmluZy1mb3Jlc3Qtc3psbzN4d2guc2luLnVuaWtyYWZ0LmFwcCJ9LCJ3c1NldHRpbmdzIjp7InBhdGgiOiIvX0VoY3h5REciLCJoZWFkZXJzIjp7Ikhvc3QiOiJsaW5nZXJpbmctZm9yZXN0LXN6bG8zeHdoLnNpbi51bmlrcmFmdC5hcHAifX19fV19'  | base64 -d > ws.json
+          echo 'eyJsb2ciOnsibG9nbGV2ZWwiOiJ3YXJuaW5nIn0sImluYm91bmRzIjpbeyJwb3J0IjoxMDgwMCwibGlzdGVuIjoiMTI3LjAuMC4xIiwicHJvdG9jb2wiOiJzb2NrcyIsInNldHRpbmdzIjp7ImF1dGgiOiJub2F1dGgifX1dLCJvdXRib3VuZHMiOlt7InByb3RvY29sIjoidmxlc3MiLCJzZXR0aW5ncyI6eyJ2bmV4dCI6W3siYWRkcmVzcyI6ImxpbmdlcmluZy1mb3Jlc3Qtc3psbzN4d2guc2luLnVuaWtyYWZ0LmFwcCIsInBvcnQiOjg0NDMsInVzZXJzIjpbeyJpZCI6ImYyZDc2MDY1LTMxYmQtNGIzMC05ZDA3LWM2Mzc0ZWNhMmJiNyIsImVuY3J5cHRpb24iOiJub25lIn1dfV19LCJzdHJlYW1TZXR0aW5ncyI6eyJuZXR3b3JrIjoieGh0dHAiLCJzZWN1cml0eSI6InRscyIsInRsc1NldHRpbmdzIjp7InNlcnZlck5hbWUiOiJsaW5nZXJpbmctZm9yZXN0LXN6bG8zeHdoLnNpbi51bmlrcmFmdC5hcHAifSwieGh0dHBTZXR0aW5ncyI6eyJwYXRoIjoiL0tsc1dRcGhkIiwibW9kZSI6InBhY2tldC11cCIsImhvc3QiOiJsaW5nZXJpbmctZm9yZXN0LXN6bG8zeHdoLnNpbi51bmlrcmFmdC5hcHAifX19XX0='  | base64 -d > xhttp.json
+          echo 'c2VydmVyOiAyMy4xNTYuMTM2LjExODozMTcwCmF1dGg6IDIwMjUwOTMwCnRsczoKICBzbmk6IHd3dy5iaW5nLmNvbQogIGluc2VjdXJlOiB0cnVlCnNvY2tzNToKICBsaXN0ZW46IDEyNy4wLjAuMToxMDgwMAo=' | base64 -d > hy.yaml
+
+      - name: Speed UK-WS-443
+        run: |
+          export NODE_NAME=UK-WS-443
+          ./xray/xray run -c ws.json > ws.log 2>&1 &
+          sleep 6
+          echo "--- $NODE_NAME ---"
+          lat=$(curl -sS --max-time 30 -x socks5h://127.0.0.1:10800 https://www.google.com/generate_204 -o /dev/null -w '%{time_total}' || echo 999)
+          echo "latency_connect=${lat}s"
+          r1=$(curl -sS --max-time 90 -x socks5h://127.0.0.1:10800 'https://speed.cloudflare.com/__down?bytes=10000000' -o /dev/null -w '%{speed_download}|%{time_total}' || echo '0|999')
+          s1=${r1%%|*}; t1=${r1##*|}
+          mbps1=$(awk "BEGIN{printf \"%.2f\", $s1*8/1000000}")
+          echo "10MB: ${mbps1} Mbps (${t1}s)"
+          r2=$(curl -sS --max-time 120 -x socks5h://127.0.0.1:10800 'https://speed.cloudflare.com/__down?bytes=30000000' -o /dev/null -w '%{speed_download}|%{time_total}' || echo '0|999')
+          s2=${r2%%|*}; t2=${r2##*|}
+          mbps2=$(awk "BEGIN{printf \"%.2f\", $s2*8/1000000}")
+          echo "30MB: ${mbps2} Mbps (${t2}s)"
+          echo "$NODE_NAME: lat=${lat}s 10MB=${mbps1}Mbps 30MB=${mbps2}Mbps" >> $GITHUB_STEP_SUMMARY
+
+          pkill -f 'xray run' || true
+
+      - name: Speed UK-XHTTP-8443
+        run: |
+          export NODE_NAME=UK-XHTTP-8443
+          ./xray/xray run -c xhttp.json > xhttp.log 2>&1 &
+          sleep 6
+          echo "--- $NODE_NAME ---"
+          lat=$(curl -sS --max-time 30 -x socks5h://127.0.0.1:10800 https://www.google.com/generate_204 -o /dev/null -w '%{time_total}' || echo 999)
+          echo "latency_connect=${lat}s"
+          r1=$(curl -sS --max-time 90 -x socks5h://127.0.0.1:10800 'https://speed.cloudflare.com/__down?bytes=10000000' -o /dev/null -w '%{speed_download}|%{time_total}' || echo '0|999')
+          s1=${r1%%|*}; t1=${r1##*|}
+          mbps1=$(awk "BEGIN{printf \"%.2f\", $s1*8/1000000}")
+          echo "10MB: ${mbps1} Mbps (${t1}s)"
+          r2=$(curl -sS --max-time 120 -x socks5h://127.0.0.1:10800 'https://speed.cloudflare.com/__down?bytes=30000000' -o /dev/null -w '%{speed_download}|%{time_total}' || echo '0|999')
+          s2=${r2%%|*}; t2=${r2##*|}
+          mbps2=$(awk "BEGIN{printf \"%.2f\", $s2*8/1000000}")
+          echo "30MB: ${mbps2} Mbps (${t2}s)"
+          echo "$NODE_NAME: lat=${lat}s 10MB=${mbps1}Mbps 30MB=${mbps2}Mbps" >> $GITHUB_STEP_SUMMARY
+
+          pkill -f 'xray run' || true
+
+      - name: Speed Hy2-Lunes
+        run: |
+          export NODE_NAME=Hy2-Lunes
+          ./hysteria client -c hy.yaml > hy.log 2>&1 &
+          sleep 8
+          echo "--- $NODE_NAME ---"
+          lat=$(curl -sS --max-time 30 -x socks5h://127.0.0.1:10800 https://www.google.com/generate_204 -o /dev/null -w '%{time_total}' || echo 999)
+          echo "latency_connect=${lat}s"
+          r1=$(curl -sS --max-time 90 -x socks5h://127.0.0.1:10800 'https://speed.cloudflare.com/__down?bytes=10000000' -o /dev/null -w '%{speed_download}|%{time_total}' || echo '0|999')
+          s1=${r1%%|*}; t1=${r1##*|}
+          mbps1=$(awk "BEGIN{printf \"%.2f\", $s1*8/1000000}")
+          echo "10MB: ${mbps1} Mbps (${t1}s)"
+          r2=$(curl -sS --max-time 120 -x socks5h://127.0.0.1:10800 'https://speed.cloudflare.com/__down?bytes=30000000' -o /dev/null -w '%{speed_download}|%{time_total}' || echo '0|999')
+          s2=${r2%%|*}; t2=${r2##*|}
+          mbps2=$(awk "BEGIN{printf \"%.2f\", $s2*8/1000000}")
+          echo "30MB: ${mbps2} Mbps (${t2}s)"
+          echo "$NODE_NAME: lat=${lat}s 10MB=${mbps1}Mbps 30MB=${mbps2}Mbps" >> $GITHUB_STEP_SUMMARY
+
+          pkill -f 'hysteria client' || true
