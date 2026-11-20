@@ -5,17 +5,18 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Probe from clean public IP
+      - name: Probe with client UA
         env:
           SUB_URL: ${{ secrets.SUB_URL }}
         run: |
-          echo "=== runner exit IP ==="
-          curl -sS --max-time 15 https://api.ipify.com || echo "(ipify fail)"
+          echo "=== B body (ClashMeta UA) ==="
+          curl -sS -o /tmp/b.txt -w 'STATUS=%{http_code} SIZE=%{size_download}\n' --max-time 30 -A "ClashMeta/1.19.31; mihomo/1.19.31" "$SUB_URL" || true
+          cat /tmp/b.txt 2>/dev/null || true
           echo ""
-          echo "=== A: default curl ==="
-          curl -sS -o /tmp/a.txt -w 'STATUS=%{http_code} SIZE=%{size_download}\n' --max-time 30 "$SUB_URL" || echo "A curl fail"
-          echo "=== B: ClashMeta UA ==="
-          curl -sS -o /tmp/b.txt -w 'STATUS=%{http_code} SIZE=%{size_download}\n' --max-time 30 -A "ClashMeta/1.19.31; mihomo/1.19.31" "$SUB_URL" || echo "B curl fail"
-          echo "=== body head A ==="
-          head -c 400 /tmp/a.txt 2>/dev/null || true
-          echo ""
+          echo "=== with common sub UAs ==="
+          for ua in "clash" "ClashforWindows/0.20.12" "v2rayN/6.34" "mihomo-party/1.5.0"; do
+            echo "--- UA=$ua ---"
+            curl -sS -o /tmp/c.txt -w 'STATUS=%{http_code} SIZE=%{size_download}\n' --max-time 30 -A "$ua" "$SUB_URL" || true
+            head -c 200 /tmp/c.txt 2>/dev/null || true
+            echo ""
+          done
