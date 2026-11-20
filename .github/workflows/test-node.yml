@@ -1,0 +1,33 @@
+name: Test Lunes Node UDP
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-node.yml'
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: TCP port check
+        run: |
+          timeout 10 bash -c 'cat < /dev/null > /dev/tcp/23.156.136.118/3170' && echo 'TCP3170=OPEN' || echo 'TCP3170=CLOSED'
+      - name: Download hysteria
+        run: |
+          curl -fsSL -o hysteria https://github.com/apernet/hysteria/releases/download/app/v2.6.3/hysteria-linux-amd64
+          chmod +x hysteria
+          ./hysteria version || true
+      - name: Write config
+        run: |
+          echo 'c2VydmVyOiAyMy4xNTYuMTM2LjExODozMTcwCmF1dGg6IDIwMjUwOTMwCnRsczoKICBzbmk6IHd3dy5iaW5nLmNvbQogIGluc2VjdXJlOiB0cnVlCnNvY2tzNToKICBsaXN0ZW46IDEyNy4wLjAuMToxMDgwMA==' | base64 -d > client.yaml
+          cat client.yaml
+      - name: Connect and test
+        run: |
+          ./hysteria client -c client.yaml > hy.log 2>&1 &
+          sleep 15
+          echo "===== HYSTERIA LOG ====="
+          cat hy.log
+          echo "===== PROXY HTTP ====="
+          curl -sS --max-time 25 -x socks5h://127.0.0.1:10800 https://www.google.com/generate_204 -o /dev/null -w 'HTTP=%{http_code}\n' || echo 'PROXY=FAIL'
+          echo "===== EXIT IP ====="
+          curl -sS --max-time 25 -x socks5h://127.0.0.1:10800 https://api.ipify.org || echo 'IP=FAIL'
