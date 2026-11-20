@@ -1,0 +1,73 @@
+name: Node Healthcheck
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 */6 * * *'   # every 6h UTC
+
+jobs:
+  healthcheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download clients
+        run: |
+          curl -fsSL -o xray.zip https://github.com/XTLS/Xray-core/releases/download/v26.11.9/Xray-linux-64.zip
+          unzip -oq xray.zip -d xray && chmod +x xray/xray
+          curl -fsSL -o hysteria https://github.com/apernet/hysteria/releases/download/app/v2.6.3/hysteria-linux-amd64
+          chmod +x hysteria
+
+      - name: Write configs
+        run: |
+          echo 'eyJsb2ciOnsibG9nbGV2ZWwiOiJ3YXJuaW5nIn0sImluYm91bmRzIjpbeyJwb3J0IjoxMDgwMCwibGlzdGVuIjoiMTI3LjAuMC4xIiwicHJvdG9jb2wiOiJzb2NrcyIsInNldHRpbmdzIjp7ImF1dGgiOiJub2F1dGgifX1dLCJvdXRib3VuZHMiOlt7InByb3RvY29sIjoidmxlc3MiLCJzZXR0aW5ncyI6eyJ2bmV4dCI6W3siYWRkcmVzcyI6ImxpbmdlcmluZy1mb3Jlc3Qtc3psbzN4d2guc2luLnVuaWtyYWZ0LmFwcCIsInBvcnQiOjQ0MywidXNlcnMiOlt7ImlkIjoiZjJkNzYwNjUtMzFiZC00YjMwLTlkMDctYzYzNzRlY2EyYmI3IiwiZW5jcnlwdGlvbiI6Im5vbmUifV19XX0sInN0cmVhbVNldHRpbmdzIjp7Im5ldHdvcmsiOiJ3cyIsInNlY3VyaXR5IjoidGxzIiwidGxzU2V0dGluZ3MiOnsic2VydmVyTmFtZSI6ImxpbmdlcmluZy1mb3Jlc3Qtc3psbzN4d2guc2luLnVuaWtyYWZ0LmFwcCJ9LCJ3c1NldHRpbmdzIjp7InBhdGgiOiIvX0VoY3h5REciLCJoZWFkZXJzIjp7Ikhvc3QiOiJsaW5nZXJpbmctZm9yZXN0LXN6bG8zeHdoLnNpbi51bmlrcmFmdC5hcHAifX19fV19'  | base64 -d > ws.json
+          echo 'eyJsb2ciOnsibG9nbGV2ZWwiOiJ3YXJuaW5nIn0sImluYm91bmRzIjpbeyJwb3J0IjoxMDgwMCwibGlzdGVuIjoiMTI3LjAuMC4xIiwicHJvdG9jb2wiOiJzb2NrcyIsInNldHRpbmdzIjp7ImF1dGgiOiJub2F1dGgifX1dLCJvdXRib3VuZHMiOlt7InByb3RvY29sIjoidmxlc3MiLCJzZXR0aW5ncyI6eyJ2bmV4dCI6W3siYWRkcmVzcyI6ImxpbmdlcmluZy1mb3Jlc3Qtc3psbzN4d2guc2luLnVuaWtyYWZ0LmFwcCIsInBvcnQiOjg0NDMsInVzZXJzIjpbeyJpZCI6ImYyZDc2MDY1LTMxYmQtNGIzMC05ZDA3LWM2Mzc0ZWNhMmJiNyIsImVuY3J5cHRpb24iOiJub25lIn1dfV19LCJzdHJlYW1TZXR0aW5ncyI6eyJuZXR3b3JrIjoieGh0dHAiLCJzZWN1cml0eSI6InRscyIsInRsc1NldHRpbmdzIjp7InNlcnZlck5hbWUiOiJsaW5nZXJpbmctZm9yZXN0LXN6bG8zeHdoLnNpbi51bmlrcmFmdC5hcHAifSwieGh0dHBTZXR0aW5ncyI6eyJwYXRoIjoiL0tsc1dRcGhkIiwibW9kZSI6InBhY2tldC11cCIsImhvc3QiOiJsaW5nZXJpbmctZm9yZXN0LXN6bG8zeHdoLnNpbi51bmlrcmFmdC5hcHAifX19XX0='  | base64 -d > xhttp.json
+          echo 'c2VydmVyOiAyMy4xNTYuMTM2LjExODozMTcwCmF1dGg6IDIwMjUwOTMwCnRsczoKICBzbmk6IHd3dy5iaW5nLmNvbQogIGluc2VjdXJlOiB0cnVlCnNvY2tzNToKICBsaXN0ZW46IDEyNy4wLjAuMToxMDgwMAo=' | base64 -d > hy.yaml
+
+      - name: Test UK-WS-443
+        id: ws
+        continue-on-error: true
+        run: |
+          ./xray/xray run -c ws.json > ws.log 2>&1 &
+          sleep 6
+          code=$(curl -sS --max-time 25 -x socks5h://127.0.0.1:10800 https://www.google.com/generate_204 -o /dev/null -w '%{http_code}' || echo 000)
+          ip=$(curl -sS --max-time 25 -x socks5h://127.0.0.1:10800 https://api.ipify.org || echo FAIL)
+          echo "HTTP=$code IP=$ip"
+          echo "UK-WS-443: HTTP=$code IP=$ip" >> $GITHUB_STEP_SUMMARY
+          pkill -f 'xray run' || true
+          [ "$code" = "204" ]
+
+      - name: Test UK-XHTTP-8443
+        id: xhttp
+        continue-on-error: true
+        run: |
+          ./xray/xray run -c xhttp.json > xhttp.log 2>&1 &
+          sleep 6
+          code=$(curl -sS --max-time 25 -x socks5h://127.0.0.1:10800 https://www.google.com/generate_204 -o /dev/null -w '%{http_code}' || echo 000)
+          ip=$(curl -sS --max-time 25 -x socks5h://127.0.0.1:10800 https://api.ipify.org || echo FAIL)
+          echo "HTTP=$code IP=$ip"
+          echo "UK-XHTTP-8443: HTTP=$code IP=$ip" >> $GITHUB_STEP_SUMMARY
+          pkill -f 'xray run' || true
+          [ "$code" = "204" ]
+
+      - name: Test Hy2-Lunes
+        id: hy2
+        continue-on-error: true
+        run: |
+          ./hysteria client -c hy.yaml > hy.log 2>&1 &
+          sleep 8
+          code=$(curl -sS --max-time 25 -x socks5h://127.0.0.1:10800 https://www.google.com/generate_204 -o /dev/null -w '%{http_code}' || echo 000)
+          ip=$(curl -sS --max-time 25 -x socks5h://127.0.0.1:10800 https://api.ipify.org || echo FAIL)
+          echo "HTTP=$code IP=$ip"
+          echo "Hy2-Lunes: HTTP=$code IP=$ip" >> $GITHUB_STEP_SUMMARY
+          pkill -f 'hysteria client' || true
+          [ "$code" = "204" ]
+
+      - name: Aggregate result
+        if: always()
+        run: |
+          echo "===== FINAL =====" >> $GITHUB_STEP_SUMMARY
+          fail=0
+          if [ "${{ steps.ws.outcome }}" != "success" ]; then echo "UK-WS-443 DOWN" >> $GITHUB_STEP_SUMMARY; fail=1; fi
+          if [ "${{ steps.xhttp.outcome }}" != "success" ]; then echo "UK-XHTTP-8443 DOWN" >> $GITHUB_STEP_SUMMARY; fail=1; fi
+          if [ "${{ steps.hy2.outcome }}" != "success" ]; then echo "Hy2-Lunes DOWN" >> $GITHUB_STEP_SUMMARY; fail=1; fi
+          if [ "$fail" = "0" ]; then echo "ALL NODES OK" >> $GITHUB_STEP_SUMMARY; fi
+          exit $fail
