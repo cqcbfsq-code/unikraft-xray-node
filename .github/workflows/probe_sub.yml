@@ -1,0 +1,21 @@
+name: Probe Subscription
+on:
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe from clean public IP
+        env:
+          SUB_URL: ${{ secrets.SUB_URL }}
+        run: |
+          echo "=== runner exit IP ==="
+          curl -sS --max-time 15 https://api.ipify.com || echo "(ipify fail)"
+          echo ""
+          echo "=== A: default curl ==="
+          curl -sS -o /tmp/a.txt -w 'STATUS=%{http_code} SIZE=%{size_download}\n' --max-time 30 "$SUB_URL" || echo "A curl fail"
+          echo "=== B: ClashMeta UA ==="
+          curl -sS -o /tmp/b.txt -w 'STATUS=%{http_code} SIZE=%{size_download}\n' --max-time 30 -A "ClashMeta/1.19.31; mihomo/1.19.31" "$SUB_URL" || echo "B curl fail"
+          echo "=== body head A ==="
+          head -c 400 /tmp/a.txt 2>/dev/null || true
+          echo ""
