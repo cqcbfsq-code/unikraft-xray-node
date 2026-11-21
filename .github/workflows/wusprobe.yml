@@ -1,0 +1,28 @@
+name: WusRouter Reachability
+on:
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: direct vs via-node
+        run: |
+          set +e
+          echo "=== runner egress IP: $(curl -s --max-time 10 https://api.ipify.org) ==="
+          echo "--- A) DIRECT to wusrouter.com ---"
+          curl -s -o /dev/null -w "direct code=%{http_code} ip=%{remote_ip} tcp=%{time_connect} tls=%{time_appconnect} total=%{time_total}\n" --connect-timeout 8 --max-time 20 https://wusrouter.com/ || echo "direct FAILED"
+          curl -s -o /dev/null -w "direct www code=%{http_code} ip=%{remote_ip} total=%{time_total}\n" --connect-timeout 8 --max-time 20 https://www.wusrouter.com/ || echo "direct www FAILED"
+          echo "--- B) install xray ---"
+          wget -q https://github.com/XTLS/Xray-core/releases/download/v26.11.9/Xray-linux-64.zip -O x.zip && unzip -oq x.zip xray || echo "xray install failed"
+          echo "eyJsb2ciOiB7ImxvZ2xldmVsIjogIndhcm5pbmcifSwgImluYm91bmRzIjogW3sicG9ydCI6IDEwODAwLCAibGlzdGVuIjogIjEyNy4wLjAuMSIsICJwcm90b2NvbCI6ICJzb2NrcyIsICJzZXR0aW5ncyI6IHsiYXV0aCI6ICJub2F1dGgifX1dLCAib3V0Ym91bmRzIjogW3sicHJvdG9jb2wiOiAidmxlc3MiLCAic2V0dGluZ3MiOiB7InZuZXh0IjogW3siYWRkcmVzcyI6ICIxMDQuMTYuMC4xIiwgInBvcnQiOiA0NDMsICJ1c2VycyI6IFt7ImlkIjogIjIwMzlhN2Q4LTIyMTctNGFmMS04MDQ1LWQ0ZTJiODgyOGQ3OSIsICJlbmNyeXB0aW9uIjogIm5vbmUifV19XX0sICJzdHJlYW1TZXR0aW5ncyI6IHsibmV0d29yayI6ICJ3cyIsICJzZWN1cml0eSI6ICJ0bHMiLCAidGxzU2V0dGluZ3MiOiB7InNlcnZlck5hbWUiOiAidjBsNTR3eDhjeC5wYWdlcy5kZXYifSwgIndzU2V0dGluZ3MiOiB7InBhdGgiOiAiL2F6eHZhMTBqYjAiLCAiaGVhZGVycyI6IHsiSG9zdCI6ICJ2MGw1NHd4OGN4LnBhZ2VzLmRldiJ9fX19XX0=" | base64 -d > cfg.json
+          ./xray run -c cfg.json > xray.log 2>&1 &
+          sleep 3
+          echo "--- C) VIA CFPilot node (socks5 10800) ---"
+          curl -s -x socks5h://127.0.0.1:10800 -o /dev/null -w "vianode code=%{http_code} tcp=%{time_connect} tls=%{time_appconnect} total=%{time_total}\n" --connect-timeout 8 --max-time 20 https://wusrouter.com/ || echo "vianode FAILED"
+          curl -s -x socks5h://127.0.0.1:10800 -o /dev/null -w "vianode google code=%{http_code} total=%{time_total}\n" --connect-timeout 8 --max-time 20 https://www.google.com/ || echo "vianode google FAILED"
+          echo "--- D) via-node exit IP ---"
+          curl -s -x socks5h://127.0.0.1:10800 --max-time 15 https://api.ipify.org && echo " <- node exit IP"
+          echo "--- xray log tail ---"
+          tail -20 xray.log
+          echo "=== DONE ==="
