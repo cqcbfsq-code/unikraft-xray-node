@@ -1,0 +1,31 @@
+name: IP Probe (CFPilot)
+on:
+  workflow_dispatch:
+    inputs:
+      ip:
+        description: 'CF edge IP to probe'
+        required: true
+        default: '104.28.152.143'
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Probe IPs
+        run: |
+          HOST=v0l54wx8cx.pages.dev
+          WSPATH=/azxva10jb0
+          IPS="${{ github.event.inputs.ip }} 104.16.0.1 104.27.19.224"
+          echo "=== Runner egress: $(curl -s --max-time 10 https://api.ipify.org) ==="
+          for IP in $IPS; do
+            echo ""
+            echo "########## IP=$IP ##########"
+            for i in 1 2 3; do
+              curl -s -o /dev/null -w "http$i code=%{http_code} tcp=%{time_connect} tls=%{time_appconnect} ttfb=%{time_starttransfer} total=%{time_total}\n" --resolve "$HOST:443:$IP" --connect-timeout 8 --max-time 20 "https://$HOST/"
+            done
+            for i in 1 2 3; do
+              curl -s -o /dev/null -w "ws$i   code=%{http_code} tcp=%{time_connect} tls=%{time_appconnect} ttfb=%{time_starttransfer} total=%{time_total}\n" --resolve "$HOST:443:$IP" --connect-timeout 8 --max-time 20 -H "Upgrade: websocket" -H "Connection: Upgrade" -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" "https://$HOST$WSPATH"
+            done
+            echo "download 5MB via speed.cloudflare.com pinned to this IP:"
+            curl -s -o /dev/null -w "  code=%{http_code} speed=%{speed_download} B/s total=%{time_total}s\n" --resolve "speed.cloudflare.com:443:$IP" --connect-timeout 8 --max-time 40 "https://speed.cloudflare.com/__down?bytes=5000000" || true
+          done
